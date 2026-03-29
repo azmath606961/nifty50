@@ -1,0 +1,72 @@
+// ══════════════════════════════════════════════════════════════════════════════
+// NIFTY 50 INTRADAY — Indicator Panel (add alongside the Strategy)
+// Shows: RSI panel, Volume ratio bar, session background, signal labels
+// Add this as a separate indicator on the same chart for a cleaner view.
+// ══════════════════════════════════════════════════════════════════════════════
+
+//@version=5
+indicator("N50 Intraday — Signal Dashboard", shorttitle="N50-Dashboard", overlay=false)
+
+// ── Inputs (match your strategy settings) ──────────────────────────────────
+i_ema_fast  = input.int(20, "EMA Fast")
+i_ema_slow  = input.int(50, "EMA Slow")
+i_rsi_p     = input.int(14, "RSI Period")
+i_vol_p     = input.int(20, "Vol SMA Period")
+i_vol_mult  = input.float(1.5, "Vol Multiplier")
+
+// ── Calculations ────────────────────────────────────────────────────────────
+ema_fast  = ta.ema(close, i_ema_fast)
+ema_slow  = ta.ema(close, i_ema_slow)
+rsi_val   = ta.rsi(close, i_rsi_p)
+vol_sma   = ta.sma(volume, i_vol_p)
+vol_ratio = volume / vol_sma
+[vwap_val,_,_] = ta.vwap(hlc3, false, 1)
+
+// HTF
+ema_fast_15 = request.security(syminfo.tickerid, "15", ta.ema(close, i_ema_fast), lookahead=barmerge.lookahead_off)
+ema_slow_15 = request.security(syminfo.tickerid, "15", ta.ema(close, i_ema_slow), lookahead=barmerge.lookahead_off)
+close_15           = request.security(syminfo.tickerid, "15", close, lookahead=barmerge.lookahead_off)
+[vwap_15, _, _]    = request.security(syminfo.tickerid, "15", ta.vwap(hlc3, false, 1), lookahead=barmerge.lookahead_off)
+htf_bull = ema_fast_15 > ema_slow_15 and close_15 > vwap_15
+htf_bear = ema_fast_15 < ema_slow_15 and close_15 < vwap_15
+
+// Sessions
+in_sess1 = not na(time(timeframe.period, "0930-1130", "Asia/Kolkata"))
+in_sess2 = not na(time(timeframe.period, "1330-1445", "Asia/Kolkata"))
+
+// ── RSI Panel ───────────────────────────────────────────────────────────────
+rsi_col = rsi_val > 60 ? color.lime :
+          rsi_val > 50 ? color.new(color.green, 30) :
+          rsi_val < 40 ? color.red :
+          rsi_val < 50 ? color.new(color.red, 30) : color.gray
+
+plot(rsi_val, "RSI", color=rsi_col, linewidth=2)
+hline(70, "OB", color=color.new(color.red, 50),   linestyle=hline.style_dashed)
+hline(50, "Mid", color=color.gray,                 linestyle=hline.style_solid)
+hline(30, "OS", color=color.new(color.green, 50),  linestyle=hline.style_dashed)
+
+// ── Volume Ratio Bars ───────────────────────────────────────────────────────
+vol_col = vol_ratio >= i_vol_mult ? color.new(color.lime, 20) : color.new(color.gray, 60)
+plot(vol_ratio * 10, "Vol Ratio ×10", color=vol_col, style=plot.style_columns)
+hline(i_vol_mult * 10, "Min Vol", color=color.orange, linestyle=hline.style_dashed)
+
+// ── Gate checklist bars (score 0–7) ─────────────────────────────────────────
+in_prime = in_sess1 or in_sess2
+score_long  = (in_prime ? 1 : 0) + (close > vwap_val ? 1 : 0) + (rsi_val > 50 ? 1 : 0) +
+              (vol_ratio >= i_vol_mult ? 1 : 0) + (htf_bull ? 1 : 0) +
+              (ema_fast > ema_slow ? 1 : 0) + (ta.crossover(ema_fast, ema_slow) ? 1 : 0)
+
+score_short = (in_prime ? 1 : 0) + (close < vwap_val ? 1 : 0) + (rsi_val < 50 ? 1 : 0) +
+              (vol_ratio >= i_vol_mult ? 1 : 0) + (htf_bear ? 1 : 0) +
+              (ema_fast < ema_slow ? 1 : 0) + (ta.crossunder(ema_fast, ema_slow) ? 1 : 0)
+
+score     = math.max(score_long, score_short)
+score_col = score >= 7 ? color.lime :
+            score >= 5 ? color.yellow :
+            score >= 3 ? color.orange : color.new(color.red, 50)
+
+plot(score * 5, "Gate Score (×5)", color=score_col, linewidth=3, style=plot.style_area)
+
+// ── Session backgrounds ─────────────────────────────────────────────────────
+bgcolor(in_sess1 ? color.new(color.green, 88) : na, title="Session 1 BG")
+bgcolor(in_sess2 ? color.new(color.blue,  88) : na, title="Session 2 BG")

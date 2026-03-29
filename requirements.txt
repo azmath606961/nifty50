@@ -1,0 +1,19 @@
+# Nifty 50 Trading Bot — Requirements
+# Install: pip install -r requirements.txt
+
+# Dhan API SDK
+dhanhq>=2.0.1
+
+# Data & numerics
+pandas>=2.0.0
+numpy>=1.24.0
+
+# NSE data download (free, no API key needed)
+jugaad-data>=0.28
+requests-cache>=1.1.0
+
+# (Optional) charting for analysis
+matplotlib>=3.7.0
+
+# Scheduling (for scheduled resets)
+schedule>=1.2.0

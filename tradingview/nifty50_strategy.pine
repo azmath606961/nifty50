@@ -1,0 +1,360 @@
+// ══════════════════════════════════════════════════════════════════════════════
+// NIFTY 50 INTRADAY TRADING SYSTEM — Pine Script v5
+// Based on Nifty50_Trading_System.xlsx
+// ── Strategy: EMA Crossover + RSI + VWAP + Volume (3-Confirmation Model) ──
+//
+// HOW TO USE:
+//   1. Open TradingView → Chart → NIFTY (NSE:NIFTY)
+//   2. Set timeframe to 5 minutes
+//   3. Open Pine Editor (bottom panel) → paste this code → Add to chart
+//   4. Click "Strategy" tab → set properties → Backtest tab shows results
+//   5. Paper trade: enable "Paper Trading" in TradingView broker panel
+//   6. Live trade: connect Dhan via TradingView broker integration
+// ══════════════════════════════════════════════════════════════════════════════
+
+//@version=5
+strategy(
+     title            = "Nifty 50 Intraday System [EMA+RSI+VWAP+Vol]",
+     shorttitle        = "N50-Intraday",
+     overlay           = true,
+     initial_capital   = 50000,
+     currency          = currency.INR,
+     default_qty_type  = strategy.fixed,
+     default_qty_value = 1,
+     commission_type   = strategy.commission.cash_per_order,
+     commission_value  = 20,           // ₹20 flat per order (Dhan)
+     slippage          = 2,
+     calc_on_every_tick = false,
+     process_orders_on_close = false,
+     max_bars_back     = 500
+     )
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── INPUTS ──────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+grp_capital = "💰 Capital & Risk"
+i_capital       = input.float(50000, "Starting Capital ₹",        group=grp_capital)
+i_risk_pct      = input.float(3.0,   "Risk per Trade %",  minval=0.5, maxval=10, step=0.5, group=grp_capital)
+i_rr            = input.float(1.5,   "Reward:Risk Ratio", minval=1.0, maxval=4.0, step=0.1, group=grp_capital)
+i_max_trades    = input.int(2,        "Max Trades per Day", minval=1, maxval=5,   group=grp_capital)
+i_phase         = input.string("Full 3%", "Trading Phase",
+                     options=["Paper (0%)", "Half 1.5%", "Full 3%"],             group=grp_capital)
+
+grp_ema = "📈 EMA Settings"
+i_ema_fast      = input.int(20,  "EMA Fast Period",  minval=5,  maxval=50,  group=grp_ema)
+i_ema_slow      = input.int(50,  "EMA Slow Period",  minval=20, maxval=200, group=grp_ema)
+
+grp_rsi = "📊 RSI Settings"
+i_rsi_period    = input.int(14,  "RSI Period",       minval=5,  maxval=30,  group=grp_rsi)
+i_rsi_mid       = input.int(50,  "RSI Midline",      minval=40, maxval=60,  group=grp_rsi)
+
+grp_vol = "📦 Volume Settings"
+i_vol_period    = input.int(20,  "Volume SMA Period", minval=5, maxval=50,  group=grp_vol)
+i_vol_mult      = input.float(1.5, "Volume Multiplier (min)", minval=1.0, maxval=3.0, step=0.1, group=grp_vol)
+
+grp_time = "⏰ Trading Windows (IST)"
+i_sess1_start   = input.session("0930-1130", "Prime Session 1",  group=grp_time)
+i_sess2_start   = input.session("1330-1445", "Prime Session 2",  group=grp_time)
+i_time_stop     = input.int(1445, "Time Stop (HHMM — exit all)", group=grp_time)
+
+grp_vix = "🌡 VIX Filters"
+i_use_vix       = input.bool(false, "Enable VIX Filter (add India VIX separately)", group=grp_vix)
+i_vix_high      = input.float(20.0, "VIX High — halve size",  group=grp_vix)
+i_vix_low       = input.float(12.0, "VIX Low  — skip trade",  group=grp_vix)
+
+grp_display = "🎨 Display"
+i_show_ema      = input.bool(true,  "Show EMA lines",   group=grp_display)
+i_show_vwap     = input.bool(true,  "Show VWAP",        group=grp_display)
+i_show_signals  = input.bool(true,  "Show entry signals", group=grp_display)
+i_show_sl_tgt   = input.bool(true,  "Show SL & Target lines", group=grp_display)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── INDICATORS ──────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// EMAs
+ema_fast = ta.ema(close, i_ema_fast)
+ema_slow = ta.ema(close, i_ema_slow)
+
+// RSI
+rsi_val = ta.rsi(close, i_rsi_period)
+
+// VWAP (built-in, resets each day)
+[vwap_val, _, _] = ta.vwap(hlc3, false, 1)
+
+// Volume
+vol_sma   = ta.sma(volume, i_vol_period)
+vol_ratio = volume / vol_sma
+
+// ── 15-min Trend (higher timeframe EMA alignment) ──────────────────────────
+ema_fast_15 = request.security(syminfo.tickerid, "15", ta.ema(close, i_ema_fast), lookahead=barmerge.lookahead_off)
+ema_slow_15 = request.security(syminfo.tickerid, "15", ta.ema(close, i_ema_slow), lookahead=barmerge.lookahead_off)
+close_15    = request.security(syminfo.tickerid, "15", close,                      lookahead=barmerge.lookahead_off)
+[vwap_15, _, _] = request.security(syminfo.tickerid, "15", ta.vwap(hlc3, false, 1), lookahead=barmerge.lookahead_off)
+
+htf_bull = ema_fast_15 > ema_slow_15 and close_15 > vwap_15
+htf_bear = ema_fast_15 < ema_slow_15 and close_15 < vwap_15
+
+// ── EMA Crossovers ─────────────────────────────────────────────────────────
+bull_cross = ta.crossover(ema_fast,  ema_slow)   // EMA20 crosses above EMA50
+bear_cross = ta.crossunder(ema_fast, ema_slow)   // EMA20 crosses below EMA50
+
+// ── SL Levels (candle wick method) ─────────────────────────────────────────
+sl_long  = math.min(low[0], low[1])   // Low of signal or previous candle
+sl_short = math.max(high[0], high[1]) // High of signal or previous candle
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── SESSION & TIME FILTERS ───────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+in_sess1 = not na(time(timeframe.period, i_sess1_start, "Asia/Kolkata"))
+in_sess2 = not na(time(timeframe.period, i_sess2_start, "Asia/Kolkata"))
+in_prime = in_sess1 or in_sess2
+
+// Time stop — flatten everything at 14:45
+current_hhmm = hour * 100 + minute
+at_time_stop = current_hhmm >= i_time_stop
+
+// New day detection
+is_new_day = ta.change(dayofweek) != 0 or (hour == 9 and minute == 15)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── DAILY TRADE COUNTER ─────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+var int  trades_today       = 0
+var int  consec_losses      = 0
+var bool day_limit_hit      = false
+var bool consec_loss_stop   = false
+
+if is_new_day
+    trades_today     := 0
+    day_limit_hit    := false
+    consec_loss_stop := false
+
+// Update after each closed trade
+if strategy.closedtrades > strategy.closedtrades[1]
+    last_pnl = strategy.closedtrades.profit(strategy.closedtrades - 1)
+    trades_today := trades_today + 1
+    if last_pnl < 0
+        consec_losses := consec_losses + 1
+    else
+        consec_losses := 0
+    if trades_today >= i_max_trades
+        day_limit_hit := true
+    if consec_losses >= 2
+        consec_loss_stop := true
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── POSITION SIZING ─────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Effective risk based on phase
+eff_risk_pct = i_phase == "Paper (0%)" ? 0.0 :
+               i_phase == "Half 1.5%"  ? 1.5 :
+               i_risk_pct   // Full 3%
+
+// Use strategy.equity as running capital
+current_capital = strategy.equity
+
+risk_amount_long  = current_capital * (eff_risk_pct / 100)
+risk_amount_short = current_capital * (eff_risk_pct / 100)
+
+sl_dist_long  = close - sl_long
+sl_dist_short = sl_short - close
+
+qty_long  = sl_dist_long  > 0 ? math.floor(risk_amount_long  / sl_dist_long)  : 0
+qty_short = sl_dist_short > 0 ? math.floor(risk_amount_short / sl_dist_short) : 0
+
+target_long  = close + (sl_dist_long  * i_rr)
+target_short = close - (sl_dist_short * i_rr)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── ENTRY CONDITIONS (13-Gate Checklist) ────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Gate 1: Prime session
+gate_time      = in_prime
+
+// Gate 2: Daily limits not hit
+gate_daily     = not day_limit_hit and not consec_loss_stop
+
+// Gate 3: Not at time stop
+gate_not_stop  = not at_time_stop
+
+// Gate 4: Volume ≥ 1.5× avg
+gate_volume    = vol_ratio >= i_vol_mult
+
+// Gate 5 (LONG): 15-min trend up
+gate_htf_long  = htf_bull
+
+// Gate 5 (SHORT): 15-min trend down
+gate_htf_short = htf_bear
+
+// Gate 6 (LONG): Price above VWAP
+gate_vwap_long  = close > vwap_val
+
+// Gate 6 (SHORT): Price below VWAP
+gate_vwap_short = close < vwap_val
+
+// Gate 7 (LONG): RSI > 50
+gate_rsi_long  = rsi_val > i_rsi_mid
+
+// Gate 7 (SHORT): RSI < 50
+gate_rsi_short = rsi_val < i_rsi_mid
+
+// Gate 8: No open position
+gate_flat = strategy.position_size == 0
+
+// Gate 9: Valid SL distance (not zero)
+gate_sl_long  = sl_dist_long  > 0
+gate_sl_short = sl_dist_short > 0
+
+// Gate 10: Valid quantity
+gate_qty_long  = qty_long  >= 1
+gate_qty_short = qty_short >= 1
+
+// ── Combined Entry Signals ─────────────────────────────────────────────────
+long_base  = gate_time and gate_daily and gate_not_stop and gate_volume and gate_flat
+short_base = gate_time and gate_daily and gate_not_stop and gate_volume and gate_flat
+
+long_signal = long_base  and bull_cross and gate_htf_long  and gate_vwap_long  and gate_rsi_long  and gate_sl_long  and gate_qty_long
+short_signal= short_base and bear_cross and gate_htf_short and gate_vwap_short and gate_rsi_short and gate_sl_short and gate_qty_short
+
+// Paper mode: generate signals but use qty=0 (visual only)
+effective_qty_long  = i_phase == "Paper (0%)" ? 1 : qty_long
+effective_qty_short = i_phase == "Paper (0%)" ? 1 : qty_short
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── ORDER EXECUTION ──────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── LONG Entry ────────────────────────────────────────────────────────────
+if long_signal
+    strategy.entry("Long", strategy.long, qty=effective_qty_long,
+         alert_message="LONG|entry=" + str.tostring(close) +
+                        "|sl=" + str.tostring(sl_long) +
+                        "|target=" + str.tostring(target_long) +
+                        "|qty=" + str.tostring(qty_long))
+    strategy.exit("Long Exit", "Long",
+         stop   = sl_long,
+         limit  = target_long,
+         alert_message="LONG_EXIT|price=" + str.tostring(close))
+
+// ── SHORT Entry ───────────────────────────────────────────────────────────
+if short_signal
+    strategy.entry("Short", strategy.short, qty=effective_qty_short,
+         alert_message="SHORT|entry=" + str.tostring(close) +
+                        "|sl=" + str.tostring(sl_short) +
+                        "|target=" + str.tostring(target_short) +
+                        "|qty=" + str.tostring(qty_short))
+    strategy.exit("Short Exit", "Short",
+         stop   = sl_short,
+         limit  = target_short,
+         alert_message="SHORT_EXIT|price=" + str.tostring(close))
+
+// ── Time Stop — Exit ALL at 14:45 ─────────────────────────────────────────
+if at_time_stop and strategy.position_size != 0
+    strategy.close_all(comment="Time Stop 14:45",
+         alert_message="TIME_STOP|price=" + str.tostring(close))
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── PLOTS ────────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// EMAs
+plot(i_show_ema ? ema_fast : na, "EMA 20", color=color.new(#2196F3, 0), linewidth=2)
+plot(i_show_ema ? ema_slow : na, "EMA 50", color=color.new(#FF9800, 0), linewidth=2)
+
+// VWAP
+plot(i_show_vwap ? vwap_val : na, "VWAP", color=color.new(#9C27B0, 0), linewidth=2, style=plot.style_circles)
+
+// ── Background shading for prime sessions ──────────────────────────────────
+bgcolor(in_sess1 ? color.new(color.green, 93) : na, title="Prime Session 1")
+bgcolor(in_sess2 ? color.new(color.blue,  93) : na, title="Prime Session 2")
+
+// ── Entry signals ──────────────────────────────────────────────────────────
+plotshape(i_show_signals and long_signal,  "Long Signal",  shape.triangleup,
+     location.belowbar, color.new(#00E676, 0), size=size.normal, text="LONG\nCE")
+plotshape(i_show_signals and short_signal, "Short Signal", shape.triangledown,
+     location.abovebar, color.new(#FF1744, 0), size=size.normal, text="SHORT\nPE")
+
+// ── SL and Target lines on active trade ───────────────────────────────────
+var line sl_line     = na
+var line target_line = na
+
+if long_signal and i_show_sl_tgt
+    sl_line     := line.new(bar_index, sl_long,    bar_index + 20, sl_long,    color=color.red,   width=2, style=line.style_dashed)
+    target_line := line.new(bar_index, target_long, bar_index + 20, target_long, color=color.green, width=2, style=line.style_dashed)
+
+if short_signal and i_show_sl_tgt
+    sl_line     := line.new(bar_index, sl_short,    bar_index + 20, sl_short,    color=color.red,   width=2, style=line.style_dashed)
+    target_line := line.new(bar_index, target_short, bar_index + 20, target_short, color=color.green, width=2, style=line.style_dashed)
+
+// ── EMA crossover dots ─────────────────────────────────────────────────────
+plotshape(bull_cross and not long_signal, "Bull Cross (filtered)", shape.circle,
+     location.belowbar, color.new(color.blue, 50), size=size.tiny)
+plotshape(bear_cross and not short_signal, "Bear Cross (filtered)", shape.circle,
+     location.abovebar, color.new(color.orange, 50), size=size.tiny)
+
+// ── 15-min trend ribbon ────────────────────────────────────────────────────
+ema_ribbon_col = htf_bull ? color.new(color.green, 80) :
+                 htf_bear ? color.new(color.red,   80) : color.new(color.gray, 90)
+p1 = plot(ema_fast, display=display.none)
+p2 = plot(ema_slow, display=display.none)
+fill(p1, p2, color=ema_ribbon_col, title="EMA Ribbon")
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INFO TABLE
+// Helper function must be at global scope in Pine v5 (cannot use => inside if)
+// ─────────────────────────────────────────────────────────────────────────────
+
+tbl_cell(tbl, r, c, txt, clr, bg) =>
+    table.cell(tbl, c, r, txt,
+         text_color=clr, text_size=size.small,
+         text_halign=text.align_left,
+         bgcolor=bg)
+
+var table info_tbl = table.new(position.top_right, 2, 10,
+     bgcolor=color.new(color.black, 85), border_color=color.gray, border_width=1, frame_width=1)
+
+if barstate.islast
+    hdr_bg    = color.new(color.gray, 70)
+    no_bg     = color.new(color.black, 100)
+    net_pnl   = strategy.netprofit
+    wr        = strategy.closedtrades > 0 ? strategy.wintrades / strategy.closedtrades * 100 : 0.0
+    sess_txt  = in_sess1 ? "Session 1 ON" : in_sess2 ? "Session 2 ON" : "Off Session"
+    trend_txt = htf_bull ? "BULL" : htf_bear ? "BEAR" : "RANGE"
+
+    tbl_cell(info_tbl, 0, 0, "N50 INTRADAY",                                  color.white,  hdr_bg)
+    tbl_cell(info_tbl, 0, 1, i_phase,                                          color.yellow, hdr_bg)
+    tbl_cell(info_tbl, 1, 0, "Phase",                                          color.gray,   no_bg)
+    tbl_cell(info_tbl, 1, 1, i_phase,                                          color.lime,   no_bg)
+    tbl_cell(info_tbl, 2, 0, "Capital",                                        color.gray,   no_bg)
+    tbl_cell(info_tbl, 2, 1, "Rs " + str.tostring(math.round(strategy.equity)), color.white, no_bg)
+    tbl_cell(info_tbl, 3, 0, "Net P&L",                                        color.gray,   no_bg)
+    tbl_cell(info_tbl, 3, 1, "Rs " + str.tostring(math.round(net_pnl)),        net_pnl >= 0 ? color.lime : color.red, no_bg)
+    tbl_cell(info_tbl, 4, 0, "Win Rate",                                       color.gray,   no_bg)
+    tbl_cell(info_tbl, 4, 1, str.tostring(math.round(wr, 1)) + "%",            wr >= 65 ? color.lime : color.orange, no_bg)
+    tbl_cell(info_tbl, 5, 0, "Trades",                                         color.gray,   no_bg)
+    tbl_cell(info_tbl, 5, 1, str.tostring(strategy.closedtrades),              color.white,  no_bg)
+    tbl_cell(info_tbl, 6, 0, "Today",                                          color.gray,   no_bg)
+    tbl_cell(info_tbl, 6, 1, str.tostring(trades_today) + "/" + str.tostring(i_max_trades), color.white, no_bg)
+    tbl_cell(info_tbl, 7, 0, "Session",                                        color.gray,   no_bg)
+    tbl_cell(info_tbl, 7, 1, sess_txt,                                         in_prime ? color.lime : color.red, no_bg)
+    tbl_cell(info_tbl, 8, 0, "15m Trend",                                      color.gray,   no_bg)
+    tbl_cell(info_tbl, 8, 1, trend_txt,                                        htf_bull ? color.lime : htf_bear ? color.red : color.orange, no_bg)
+    tbl_cell(info_tbl, 9, 0, "RSI",                                            color.gray,   no_bg)
+    tbl_cell(info_tbl, 9, 1, str.tostring(math.round(rsi_val, 1)),             rsi_val > 50 ? color.lime : color.orange, no_bg)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── ALERTS (for Dhan webhook / live trading bridge) ─────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+alertcondition(long_signal,                  "🚀 LONG Signal",    "LONG CE | Entry={{close}} | SL={{plot_0}} | Nifty 5m")
+alertcondition(short_signal,                 "🔻 SHORT Signal",   "SHORT PE | Entry={{close}} | SL={{plot_0}} | Nifty 5m")
+alertcondition(at_time_stop and strategy.position_size != 0, "⏹ Time Stop", "TIME STOP 14:45 — Exit all positions now")
+alertcondition(consec_loss_stop,             "⚠️ Loss Limit",     "2 consecutive losses — STOP trading today")
+alertcondition(day_limit_hit,                "✅ Day Complete",    "Max trades reached — done for today")

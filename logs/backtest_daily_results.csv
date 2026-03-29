@@ -1,0 +1,4 @@
+entry_date,exit_date,direction,entry,sl,target,qty,risk_rs,result,pnl,balance,growth_pct,note
+2025-04-21,2025-04-25,LONG,24125.55,23903.65,24458.4,6,1500.0,LOSS,-1331.4,48668.6,-2.66,SL hit
+2025-09-12,2025-09-16,LONG,25114.0,25038.05,25227.93,19,1460.06,WIN,2164.58,50833.18,1.67,Target hit
+2026-01-20,2026-02-01,SHORT,25232.5,25585.0,24703.75,4,1525.0,WIN,2115.0,52948.18,5.9,Target hit
