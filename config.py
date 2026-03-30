@@ -3,10 +3,22 @@ Nifty 50 Intraday Trading System — Configuration
 All parameters pulled from Nifty50_Trading_System.xlsx
 """
 
-# ─── ACCOUNT ─────────────────────────────────────────────────────────────────
-DHAN_CLIENT_ID = "YOUR_CLIENT_ID"          # Replace with your Dhan client ID
-DHAN_ACCESS_TOKEN = "YOUR_ACCESS_TOKEN"    # Replace with your Dhan access token
+# Secrets are kept in `secrets_local.py` (ignored by git).
+# This keeps personal API keys out of the repository.
+try:
+    from secrets_local import (
+        DHAN_CLIENT_ID,
+        DHAN_ACCESS_TOKEN,
+        DHAN_API_KEY,
+        DHAN_API_SECRET,
+    )
+except ImportError:
+    DHAN_CLIENT_ID = ""
+    DHAN_ACCESS_TOKEN = ""
+    DHAN_API_KEY = ""
+    DHAN_API_SECRET = ""
 
+# ─── ACCOUNT ─────────────────────────────────────────────────────────────────
 # ─── CAPITAL & RISK ───────────────────────────────────────────────────────────
 INITIAL_CAPITAL = 50_000        # Starting capital ₹
 RISK_PER_TRADE = 0.03           # 3% risk per trade

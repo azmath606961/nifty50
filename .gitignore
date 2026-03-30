@@ -1,0 +1,10 @@
+# Secrets / local configuration
+secrets_local.py
+
+# Python cache
+__pycache__/
+
+# IDE (optional)
+.idea/
+.venv/
+

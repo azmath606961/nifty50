@@ -1,0 +1,51 @@
+---
+description: Always use Nifty50 bot project context from README/spec
+alwaysApply: true
+---
+
+Authoritative context to apply in every new chat:
+
+Strategy model (intraday only, Dhan broker):
+- EMA Fast=20, EMA Slow=50 on close; both on 5m and 15m
+- RSI period=14 (Wilder smoothing via EWM com=13, adjust=False); LONG if RSI>50, SHORT if RSI<50
+- VWAP intraday reset daily; typical price=(H+L+C)/3; applied on 5m only
+- Volume filter: `volume_ratio = volume / SMA(volume, 20)`, require `volume_ratio >= 1.5`
+- EMA crossover freshness: occurred within last 3 candles
+
+Trading windows (IST):
+- Trade only in `09:30–11:30` OR `13:30–14:45`
+- Time stop/force exit: `14:45`
+
+15-min market structure (every bar):
+- trending_up: EMA20_15m > EMA50_15m AND close_15m > VWAP_15m (LONG setups)
+- trending_down: EMA20_15m < EMA50_15m AND close_15m < VWAP_15m (SHORT setups)
+- otherwise: ranging => NO TRADE
+
+Entry (13 gates; all must be TRUE):
+- Gate 2: trades_taken_today < 2
+- Gate 3: consecutive_losses < 2
+- Gate 4: daily_pnl > -(capital * 0.06)
+- Gate 6: EMA20_5m crossed above/below EMA50_5m within last 3 candles
+- Gate 7: close_5m > VWAP_5m (LONG) / close_5m < VWAP_5m (SHORT)
+- Gate 8: RSI_5m > 50 (LONG) / RSI_5m < 50 (SHORT)
+- Gate 10: VIX not < 12 if VIX feed enabled (skip when VIX < 12)
+- Gate 11: no open position
+- Gate 12: SL distance > 0; Gate 13: calculated_quantity >= 1
+
+Risk/VIX adjustments:
+- Risk per trade: 3% of capital, but if VIX > 20 then risk is halved to 1.5%
+- If VIX < 12: skip trade entirely
+- Max trades/day: 2; Max consecutive losses: 2
+
+Options translation:
+- LONG => Buy ATM Call (CE); SHORT => Buy ATM Put (PE)
+- Strike interval: 50 points; weekly expiry preference (Thursday)
+- VIX > 20 => ATM only; VIX <= 20 => allow 1 OTM strike (lower cost)
+
+SL / Target (hard formulas):
+- LONG: SL = MIN(signal_low, prev_low); Target = Entry + (SL_dist * 1.5)
+- SHORT: SL = MAX(signal_high, prev_high); Target = Entry - (SL_dist * 1.5)
+
+Implementation constraints:
+- Keep these rules consistent with `README.md` and `NIFTY50_BOT_SPEC.md`.
+- Match existing code style; do not add new dependencies unless explicitly requested.
