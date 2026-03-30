@@ -100,7 +100,7 @@ def generate_signal(
             result["reason"] = f"15-min trend {trend_15m} ≠ trending_up for LONG"
             return result
         if close <= vwap_val:
-            result["reason"] = f"Price ₹{close:.0f} below VWAP ₹{vwap_val:.0f}"
+            result["reason"] = f"Price Rs{close:.0f} below VWAP Rs{vwap_val:.0f}"
             return result
         if rsi_val <= 50:
             result["reason"] = f"RSI {rsi_val:.1f} ≤ 50 for LONG"
@@ -113,7 +113,7 @@ def generate_signal(
             "entry": close,
             "sl": round(sl, 2),
             "option": "CE",
-            "reason": f"✅ LONG: EMA cross↑ | RSI={rsi_val:.0f} | Vol={vol_ratio:.1f}x | Price>VWAP",
+            "reason": f"[LONG] EMA cross-UP | RSI={rsi_val:.0f} | Vol={vol_ratio:.1f}x | Price>VWAP",
         })
 
     elif cross_direction == -1:  # Bearish crossover
@@ -121,7 +121,7 @@ def generate_signal(
             result["reason"] = f"15-min trend {trend_15m} ≠ trending_down for SHORT"
             return result
         if close >= vwap_val:
-            result["reason"] = f"Price ₹{close:.0f} above VWAP ₹{vwap_val:.0f}"
+            result["reason"] = f"Price Rs{close:.0f} above VWAP Rs{vwap_val:.0f}"
             return result
         if rsi_val >= 50:
             result["reason"] = f"RSI {rsi_val:.1f} ≥ 50 for SHORT"
@@ -133,7 +133,7 @@ def generate_signal(
             "entry": close,
             "sl": round(sl, 2),
             "option": "PE",
-            "reason": f"✅ SHORT: EMA cross↓ | RSI={rsi_val:.0f} | Vol={vol_ratio:.1f}x | Price<VWAP",
+            "reason": f"[SHORT] EMA cross-DN | RSI={rsi_val:.0f} | Vol={vol_ratio:.1f}x | Price<VWAP",
         })
 
     logger.info("Signal: %s | %s", result["signal"], result["reason"])

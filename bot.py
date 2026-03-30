@@ -30,11 +30,18 @@ from utils.trade_logger import TradeLogger, TradeRecord
 
 # ─── LOGGING SETUP ────────────────────────────────────────────────────────────
 os.makedirs("logs", exist_ok=True)
+
+# Force UTF-8 on Windows console (cp1252 cannot encode Rs symbol or emoji)
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(message)s",
     handlers=[
-        logging.FileHandler(f"logs/bot_{date.today()}.log"),
+        logging.FileHandler(f"logs/bot_{date.today()}.log", encoding="utf-8"),
         logging.StreamHandler(sys.stdout),
     ],
 )
@@ -49,7 +56,7 @@ class TradingBot:
         self.is_paper = (phase == "paper")
 
         logger.info("=" * 65)
-        logger.info("  🏦 Nifty 50 Intraday Bot starting | Phase=%s | Paper=%s",
+        logger.info("  [BOT] Nifty 50 Intraday Bot starting | Phase=%s | Paper=%s",
                     phase.upper(), self.is_paper)
         logger.info("=" * 65)
 
@@ -167,11 +174,11 @@ class TradingBot:
         qty, risk_amt, target, target_profit = self.risk.calculate_quantity(entry, sl, vix)
 
         logger.info("─" * 55)
-        logger.info("🚀 ENTERING %s TRADE", direction)
-        logger.info("   Entry  : ₹%.2f", entry)
-        logger.info("   SL     : ₹%.2f", sl)
-        logger.info("   Target : ₹%.2f", target)
-        logger.info("   Qty    : %d  | Risk: ₹%.0f | Target P&L: ₹%.0f",
+        logger.info("[ENTRY] ENTERING %s TRADE", direction)
+        logger.info("   Entry  : Rs %.2f", entry)
+        logger.info("   SL     : Rs %.2f", sl)
+        logger.info("   Target : Rs %.2f", target)
+        logger.info("   Qty    : %d  | Risk: Rs %.0f | Target PnL: Rs %.0f",
                     qty, risk_amt, target_profit)
 
         tx_type = "BUY" if direction == "LONG" else "SELL"
@@ -226,7 +233,7 @@ class TradingBot:
             "entry_time": datetime.now(),
             "entry_price": entry,
         }
-        logger.info("✅ Trade open | Entry order: %s", entry_order.get("order_id"))
+        logger.info("[OK] Trade open | Entry order: %s", entry_order.get("order_id"))
 
     def _exit_trade(self, exit_price: float, reason: str):
         """Close the open position."""
@@ -282,9 +289,9 @@ class TradingBot:
         self.trade_log.log(record)
 
         logger.info("─" * 55)
-        logger.info("🏁 TRADE CLOSED | %s | P&L=₹%.0f | Balance=₹%.0f",
+        logger.info("[CLOSED] TRADE CLOSED | %s | PnL=Rs %.0f | Balance=Rs %.0f",
                     result, pnl, balance)
-        logger.info("   Reason: %s", reason)
+        logger.info("   Reason : %s", reason)
         self.open_trade = None
 
     # ─── MAIN LOOP ────────────────────────────────────────────────────────────
@@ -311,14 +318,14 @@ class TradingBot:
                 self._exit_trade(t["sl"], "Stop loss hit")
                 return True
             if current_price >= t["target"]:
-                self._exit_trade(t["target"], "Target hit ✅")
+                self._exit_trade(t["target"], "Target hit")
                 return True
         else:
             if current_price >= t["sl"]:
                 self._exit_trade(t["sl"], "Stop loss hit")
                 return True
             if current_price <= t["target"]:
-                self._exit_trade(t["target"], "Target hit ✅")
+                self._exit_trade(t["target"], "Target hit")
                 return True
 
         return False
@@ -404,7 +411,7 @@ class TradingBot:
                     self._enter_trade(signal, vix)
                 else:
                     for r in reasons:
-                        logger.info("⛔ %s", r)
+                        logger.info("[SKIP] %s", r)
             else:
                 logger.debug("No signal: %s", signal["reason"])
 
@@ -429,7 +436,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Bot stopped by user.")
         if bot.open_trade:
-            logger.warning("⚠️  There is an open trade — please close manually in Dhan!")
+            logger.warning("[WARN] There is an open trade — please close manually in Dhan!")
         summary = bot.trade_log.get_summary()
         if summary:
             logger.info("Session summary: %s", summary)

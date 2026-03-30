@@ -179,10 +179,10 @@ class RiskManager:
         self.daily.drawdown = self.daily.peak_balance - self.capital
 
         logger.info(
-            "Trade recorded | PnL=₹%.0f | Balance=₹%.0f | ConsecLoss=%d",
+            "Trade recorded | PnL=Rs %.0f | Balance=Rs %.0f | ConsecLoss=%d",
             pnl, self.capital, self.daily.consecutive_losses
         )
 
     def reset_daily(self):
         self.daily = DailyStats(peak_balance=self.capital)
-        logger.info("Daily stats reset. Capital=₹%.0f", self.capital)
+        logger.info("Daily stats reset. Capital=Rs %.0f", self.capital)

@@ -455,17 +455,12 @@ Examples:
 
     # ── Load data ─────────────────────────────────────────────────────────────
     if args.fetch:
-        if not args.from_date or not args.to_date:
-            parser.error("--fetch requires --from YYYY-MM-DD and --to YYYY-MM-DD")
-        from backtester.data_fetcher import fetch_intraday_jugaad, normalise_jugaad, save_csv
-        from datetime import datetime
-        from_date = datetime.strptime(args.from_date, "%Y-%m-%d").date()
-        to_date   = datetime.strptime(args.to_date,   "%Y-%m-%d").date()
-        out_path  = f"data/NIFTY50_5m_{args.from_date}_to_{args.to_date}.csv"
-        os.makedirs("data", exist_ok=True)
-        raw  = fetch_intraday_jugaad(from_date, to_date, interval=5)
-        df5  = normalise_jugaad(raw, "intraday")
-        save_csv(df5, out_path)
+        from backtester.data_fetcher import explain_intraday_options
+        explain_intraday_options()
+        print("ERROR: --fetch is not available for intraday backtest.")
+        print("jugaad-data only provides daily bars, not 5-min intraday.")
+        print("Use --csv with a TradingView export or Dhan paid API data.")
+        sys.exit(1)
     else:
         df5 = load_csv(args.csv)
 

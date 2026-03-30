@@ -1,7 +1,8 @@
 # Nifty 50 Trading Bot — Requirements
 # Install: pip install -r requirements.txt
 
-# Dhan API SDK
+# Dhan API SDK (only needed for live trading — not required for paper mode)
+# pip install dhanhq
 dhanhq>=2.0.1
 
 # Data & numerics

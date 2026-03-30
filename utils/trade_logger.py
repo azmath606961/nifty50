@@ -71,7 +71,7 @@ class TradeLogger:
         with open(self.csv_path, "a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=HEADERS)
             writer.writerow(row)
-        logger.info("Trade logged: %s %s @ ₹%.0f | P&L=₹%.0f",
+        logger.info("Trade logged: %s %s @ Rs %.0f | PnL=Rs %.0f",
                     record.direction, record.setup_type, record.entry, record.pnl)
 
     def get_summary(self) -> dict:
